@@ -1,0 +1,5 @@
+,scoring_columns,booleans
+0,grossProfitMargin,True
+1,payoutRatio,True
+2,priceFairValue,True
+3,companyEquityMultiplier,True

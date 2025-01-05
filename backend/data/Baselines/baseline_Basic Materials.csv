@@ -1,0 +1,13 @@
+,scoring_columns,booleans
+0,priceEarningsRatio,True
+1,cashConversionCycle,False
+2,priceFairValue,False
+3,dividendYield,True
+4,capitalExpenditureCoverageRatio,True
+5,payablesTurnover,False
+6,cashFlowCoverageRatios,True
+7,debtEquityRatio,False
+8,priceBookValueRatio,True
+9,shortTermCoverageRatios,False
+10,totalDebtToCapitalization,False
+11,returnOnEquity,True

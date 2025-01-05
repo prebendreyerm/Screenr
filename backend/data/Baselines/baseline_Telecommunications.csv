@@ -1,0 +1,17 @@
+,scoring_columns,booleans
+0,daysOfInventoryOutstanding,True
+1,cashConversionCycle,False
+2,priceEarningsToGrowthRatio,True
+3,longTermDebtToCapitalization,False
+4,dividendPaidAndCapexCoverageRatio,False
+5,daysOfPayablesOutstanding,False
+6,dividendYield,True
+7,priceToSalesRatio,False
+8,cashRatio,False
+9,debtEquityRatio,False
+10,priceToFreeCashFlowsRatio,True
+11,priceToOperatingCashFlowsRatio,True
+12,currentRatio,False
+13,enterpriseValueMultiple,True
+14,daysOfSalesOutstanding,True
+15,receivablesTurnover,True

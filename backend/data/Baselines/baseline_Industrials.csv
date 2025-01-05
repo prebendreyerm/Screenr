@@ -1,0 +1,10 @@
+,scoring_columns,booleans
+0,returnOnAssets,True
+1,companyEquityMultiplier,True
+2,priceToFreeCashFlowsRatio,False
+3,operatingCycle,True
+4,receivablesTurnover,False
+5,assetTurnover,False
+6,priceEarningsToGrowthRatio,True
+7,freeCashFlowPerShare,True
+8,netIncomePerEBT,False

@@ -1,0 +1,8 @@
+,scoring_columns,booleans
+1,companyEquityMultiplier,True
+2,currentRatio,False
+3,daysOfPayablesOutstanding,False
+4,operatingCashFlowPerShare,True
+5,priceCashFlowRatio,True
+6,priceToOperatingCashFlowsRatio,False
+7,priceToBookRatio,True
