@@ -7,6 +7,7 @@ def get_db_connection():
     conn = sqlite3.connect(db_path)
     return conn
 
+
 # Connect to SQLite database (or create it if it doesn't exist)
 conn = get_db_connection()
 cursor = conn.cursor()
@@ -16,12 +17,8 @@ cursor.execute('''
 CREATE TABLE IF NOT EXISTS Assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,
+    nordnetSymbol TEXT NOT NULL,
     name TEXT NOT NULL,
-    price REAL,
-    exchange TEXT,
-    exchangeShortName TEXT,
-    type TEXT,
-    industry TEXT,
     sector TEXT
 )
 ''')

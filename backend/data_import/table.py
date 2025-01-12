@@ -78,14 +78,7 @@ def delete_strategy(strategy_name):
 
     print("Finished deleting the strategy.")
 
-
-list_tables()
-
-t = get_table('KeyMetricsTTM')
-t2 = get_table('FinancialGrowthAnnual')
-
-print(t.columns)
-print(t2.columns)
-
+a = get_table('RatiosTTM')
+print(a)
 
 
