@@ -53,7 +53,7 @@ merged_df = merged_df.dropna()
 #     ]
 
 # User selects a year, e.g., 2022
-selected_year = 2023
+selected_year = 2015
 
 def filter_positive_growth(group):
     group = group.sort_values(by='calendarYear')
@@ -71,21 +71,17 @@ print(merged_df)
 
 
 
+# Filter for the lowest EV/EBITDA per sector
+lowest_per_sector = merged_df.loc[merged_df.groupby('sector')['operatingCashFlowGrowth'].idxmax()]
 
+# Select columns to display
+columns_to_display = [
+    'symbol', 'name', 'calendarYear', 'sector', 
+    'enterpriseValue', 'evToFreeCashFlow', 'enterpriseValueOverEBITDA', 
+    'stockPrice', 'operatingCashFlowGrowth'
+]
 
+lowest_per_sector = lowest_per_sector[columns_to_display]
 
-
-# # Filter for the lowest EV/EBITDA per sector
-# lowest_per_sector = consistent_growth_stocks.loc[consistent_growth_stocks.groupby('sector')['enterpriseValueOverEBITDA'].idxmin()]
-
-# # Select columns to display
-# columns_to_display = [
-#     'symbol', 'name', 'calendarYear', 'sector', 
-#     'enterpriseValue', 'evToFreeCashFlow', 'enterpriseValueOverEBITDA', 
-#     'stockPrice', 'operatingCashFlowGrowth'
-# ]
-
-# lowest_per_sector = lowest_per_sector[columns_to_display]
-
-# # Print the final DataFrame
-# print(lowest_per_sector)
+# Print the final DataFrame
+print(lowest_per_sector)
