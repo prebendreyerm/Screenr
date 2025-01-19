@@ -31,7 +31,7 @@ merged_df = pd.merge(
 
 merged_df = pd.merge(
     merged_df, 
-    financial_growth[['symbol', 'calendarYear', 'operatingCashFlowGrowth']], 
+    financial_growth[['symbol', 'calendarYear', 'dividendsperShareGrowth', 'revenueGrowth']], 
     on=['symbol', 'calendarYear'], how='inner'
 )
 
@@ -49,33 +49,39 @@ merged_df = merged_df.dropna()
 # merged_df = merged_df[
 #     (merged_df['enterpriseValue'] > 0) &
 #     (merged_df['evToFreeCashFlow'] > 0) &
-#     (merged_df['enterpriseValueOverEBITDA'] > 0)
+#     (merged_df['enterpriseValueOverEBITDA'] > 0) &
+#     (merged_df['revenueGrowth'] > 0)
 #     ]
 
-# User selects a year, e.g., 2022
 selected_year = 2023
 
 def filter_positive_growth(group):
     group = group.sort_values(by='calendarYear')
     recent_years = group[group['calendarYear'] <= selected_year].tail(6)  # Include the selected year and the 5 prior years
-    return len(recent_years) == 6 and all(recent_years['operatingCashFlowGrowth'] > 0)
+    return len(recent_years) == 6 and all(recent_years['dividendsperShareGrowth'] > 0)
 
 merged_df = merged_df.groupby('symbol').filter(filter_positive_growth)
 
 # Now filter for the selected year only
 merged_df = merged_df[merged_df['calendarYear'] == selected_year]
-merged_df = merged_df.sort_values('operatingCashFlowGrowth', ascending=False)
+merged_df = merged_df.sort_values('dividendsperShareGrowth', ascending=False)
 
+# Rank based on enterpriseValueOverEBITDA and revenueGrowth
+merged_df['evToEbitdaRank'] = merged_df['enterpriseValueOverEBITDA'].rank()
+merged_df['revenueGrowthRank'] = merged_df['revenueGrowth'].rank(ascending=False)
 
+# Combine rankings into a single scoring column
+merged_df['Score'] = merged_df['evToEbitdaRank'] + merged_df['revenueGrowthRank']
+print(merged_df)
 
 # Filter for the lowest EV/EBITDA per sector
-lowest_per_sector = merged_df.loc[merged_df.groupby('sector')['operatingCashFlowGrowth'].idxmax()]
+lowest_per_sector = merged_df.loc[merged_df.groupby('sector')['Score'].idxmin()]
 
 # Select columns to display
 columns_to_display = [
-    'symbol', 'name', 'calendarYear', 'sector', 
-    'enterpriseValue', 'evToFreeCashFlow', 'enterpriseValueOverEBITDA', 
-    'stockPrice', 'operatingCashFlowGrowth'
+    'symbol', 'name', 'calendarYear', 'sector',
+    'enterpriseValueOverEBITDA',
+    'revenueGrowth', 'Score'
 ]
 
 lowest_per_sector = lowest_per_sector[columns_to_display]

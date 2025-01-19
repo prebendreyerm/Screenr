@@ -56,30 +56,28 @@ merged_df = merged_df[
 merged_df['calendarYear'] = merged_df['calendarYear'].astype(int)
 
 # User selects a year, e.g., 2022
-selected_year = 2022
+selected_year = 2023
 
 # Filter for the selected year and find stocks with consistent dividend growth
 filtered_df = merged_df[merged_df['calendarYear'] <= selected_year]
 
 # Group by symbol and check for consistent dividend growth
-def has_consistent_dividend_growth(group):
+def filter_positive_growth(group):
     group = group.sort_values(by='calendarYear')
-    recent_years = group[group['calendarYear'] < selected_year].tail(5)
-    return len(recent_years) == 5 and all(recent_years['dividendsperShareGrowth'] > 0)
+    recent_years = group[group['calendarYear'] <= selected_year].tail(6)  # Include the selected year and the 5 prior years
+    return len(recent_years) == 6 and all(recent_years['dividendsperShareGrowth'] > 0)
 
-consistent_dividend_stocks = filtered_df.groupby('symbol').filter(has_consistent_dividend_growth)
-
-selected_year = 2022
+consistent_dividend_stocks = filtered_df.groupby('symbol').filter(filter_positive_growth)
 
 consistent_dividend_stocks = consistent_dividend_stocks[consistent_dividend_stocks['calendarYear'] == selected_year]
 
 # Filter for the lowest EV/EBITDA per sector
-lowest_per_sector = consistent_dividend_stocks.loc[consistent_dividend_stocks.groupby('sector')['enterpriseValueOverEBITDATTM'].idxmin()]
+lowest_per_sector = consistent_dividend_stocks.loc[consistent_dividend_stocks.groupby('sector')['dividendsperShareGrowth'].idxmax()]
 
 # Select columns to display
 columns_to_display = [
     'symbol', 'name', 'calendarYear', 'sector', 
-    'enterpriseValue', 'evToFreeCashFlow', 'enterpriseValueOverEBITDATTM', 
+    'enterpriseValue', 'evToFreeCashFlow', 'dividendsperShareGrowth', 
     'stockPrice', 'dividendYield'
 ]
 
