@@ -2,8 +2,10 @@ import numpy as np
 import pandas as pd
 import sqlite3
 from pathlib import Path
+import streamlit as st
 
 # Strategy: Select best stocks according to EV/EBITDA and ensure consistent dividend growth.
+
 
 # Connect to the SQLite database
 db_path = Path('backend/data/financial_data.db')
@@ -35,23 +37,12 @@ merged_df = pd.merge(
     on=['symbol', 'calendarYear'], how='inner'
 )
 
-# merged_df = pd.merge(
-#     merged_df, 
-#     key_metrics_ttm[['symbol', 'enterpriseValueOverEBITDATTM']], 
-#     on=['symbol'], how='inner'
-# )
 
 merged_df['calendarYear'] = merged_df['calendarYear'].astype(int)
 
 
 # Preprocessing: Remove unwanted rows
 merged_df = merged_df.dropna()
-merged_df = merged_df[
-    (merged_df['enterpriseValue'] > 0) &
-    (merged_df['evToFreeCashFlow'] > 0) &
-    (merged_df['enterpriseValueOverEBITDA'] > 0) &
-    (merged_df['revenueGrowth'] > 0)
-    ]
 
 selected_year = 2023
 
@@ -60,8 +51,7 @@ def filter_positive_growth(group):
     recent_years = group[group['calendarYear'] <= selected_year].tail(6)  # Include the selected year and the 5 prior years
     return (
         len(recent_years) == 6 and 
-        all(recent_years['operatingCashFlowGrowth'] > 0) and 
-        all(recent_years['revenueGrowth'] > 0.2)
+        all(recent_years['operatingCashFlowGrowth'] > 0)
     )
 
 merged_df = merged_df.groupby('symbol').filter(filter_positive_growth)
@@ -77,17 +67,25 @@ merged_df['revenueGrowthRank'] = merged_df['revenueGrowth'].rank(ascending=False
 # Combine rankings into a single scoring column
 merged_df['Score'] = merged_df['evToEbitdaRank'] + merged_df['revenueGrowthRank']
 
-# Filter for the lowest EV/EBITDA per sector
-lowest_per_sector = merged_df.loc[merged_df.groupby('sector')['Score'].idxmin()]
-
-# Select columns to display
+# Group by sector and get the top ten stocks for each sector
+sectors = merged_df['sector'].unique()
 columns_to_display = [
     'symbol', 'name', 'calendarYear', 'sector',
     'enterpriseValueOverEBITDA',
     'revenueGrowth', 'Score'
 ]
+st.set_page_config(layout="wide")
+st.title("Screenr")
 
-lowest_per_sector = lowest_per_sector[columns_to_display]
+# Create tabs for each sector
+tabs = st.tabs([f"{sector}" for sector in sectors])
 
-# Print the final DataFrame
-print(lowest_per_sector)
+
+for tab, sector in zip(tabs, sectors):
+    with tab:
+        sector_df = merged_df[merged_df['sector'] == sector]
+        top_ten_stocks = sector_df.nsmallest(20, 'Score')[columns_to_display]
+        st.write(f"Top ten stocks in sector: {sector}")
+        st.dataframe(top_ten_stocks, use_container_width=True, height=750)
+
+# To run the app, use the command: streamlit run /path/to/this/file.py
