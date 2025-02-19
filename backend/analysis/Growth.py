@@ -21,7 +21,7 @@ key_metrics_ttm = pd.read_sql_query('SELECT * FROM KeyMetricsTTM', conn)
 # Merge and preprocess data
 merged_df = pd.merge(
     key_metrics[['symbol', 'date', 'calendarYear', 'enterpriseValue', 'evToFreeCashFlow', 'operatingCashFlowPerShare', 'freeCashFlowYield',  'enterpriseValueOverEBITDA', 'evToOperatingCashFlow']], 
-    prices[['symbol', 'date', 'stockPrice']], 
+    prices[['symbol', 'date', 'stockPrice']],
     on=['symbol', 'date'], how='inner'
 )
 assets = assets.drop_duplicates(subset=['symbol'])
