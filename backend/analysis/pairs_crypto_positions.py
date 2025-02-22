@@ -14,6 +14,7 @@ class PairTrading:
         self.capital_history = []
         self.now = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
         self.rolling_data = {}  # Store rolling price data
+        self.positions = {}  # Store positions for each pair
 
     def fetch_btc_data(self, symbol, interval='1m', period=7, end_time=None):
         """Fetches historical data for the given period."""
@@ -58,6 +59,7 @@ class PairTrading:
         print("\nInitializing rolling window with historical data...")
         for pair in self.pairs:
             self.rolling_data[pair] = self.fetch_btc_data(pair, period=7)
+            self.positions[pair] = {"long": 0, "short": 0}  # Initialize positions
 
     def update_rolling_data(self, symbol, new_price):
         """Updates the rolling window by appending new price and removing the oldest."""
@@ -80,9 +82,7 @@ class PairTrading:
     def run_cointegration_test(self):
         """Checks cointegration on updated rolling window for all pairs."""
         print("\nRunning cointegration test on updated data...\n")
-         # Print out the data for one of the pairs (e.g., 'BTCUSDT' and 'ETHUSDT') for debugging
-        print("Data used in cointegration test:")
-        print(self.rolling_data[symbol2].tail())  # Print the last few data points for symbol2
+        
         stationary_pairs = []
         for i in range(len(self.pairs)):
             for j in range(i+1, len(self.pairs)):
@@ -106,6 +106,16 @@ class PairTrading:
         else:
             print(f"Error fetching last price: {response.status_code}, {response.text}")
             return None
+
+    def open_position(self, pair, position_type, amount):
+        """Open a long or short position."""
+        self.positions[pair][position_type] += amount
+        print(f"Opening {position_type} position for {pair} with amount {amount}")
+
+    def close_position(self, pair, position_type):
+        """Close a long or short position."""
+        self.positions[pair][position_type] = 0
+        print(f"Closing {position_type} position for {pair}")
 
     def fetch_price_continuously(self):
         """Fetches live prices, updates rolling data, and runs cointegration tests in real-time."""
@@ -132,13 +142,41 @@ class PairTrading:
             print(timestamp.ljust(20) + " ".join(price.ljust(10) for price in prices))
 
             # Run cointegration test after updating rolling window
-            self.run_cointegration_test()
+            stationary_pairs = self.run_cointegration_test()
+
+            # Open/close positions based on cointegration and spread conditions
+            for pair in stationary_pairs:
+                symbol1, symbol2, p_value = pair
+                df1, df2 = self.rolling_data[symbol1], self.rolling_data[symbol2]
+                spread = df1['close'] - df2['close']
+                mean = spread.mean()
+                std = spread.std()
+                upper = mean + std
+                lower = mean - std
+
+                # Open positions based on spread thresholds
+                if spread.iloc[-1] > upper and self.positions[symbol1]['long'] == 0 and self.positions[symbol2]['short'] == 0:
+                    self.open_position(symbol1, 'short', 1)  # Short symbol1
+                    self.open_position(symbol2, 'long', 1)   # Long symbol2
+                elif spread.iloc[-1] < lower and self.positions[symbol1]['short'] == 0 and self.positions[symbol2]['long'] == 0:
+                    self.open_position(symbol1, 'long', 1)   # Long symbol1
+                    self.open_position(symbol2, 'short', 1)  # Short symbol2
+                else:
+                    # Close positions when spread is within mean range
+                    if self.positions[symbol1]['long'] > 0:
+                        self.close_position(symbol1, 'long')
+                    if self.positions[symbol2]['short'] > 0:
+                        self.close_position(symbol2, 'short')
+                    if self.positions[symbol1]['short'] > 0:
+                        self.close_position(symbol1, 'short')
+                    if self.positions[symbol2]['long'] > 0:
+                        self.close_position(symbol2, 'long')
 
             time.sleep(32)  # Wait before fetching again
 
 # Example usage
 if __name__ == "__main__":
-    pairs = ["AVAUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT", "LTCUSDT", "UNIUSDT", "AAVEUSDT", 'XRPUSDT', 
+    pairs = ['AVAUSDT', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT', 'UNIUSDT', 'AAVEUSDT', 'XRPUSDT', 
              'DOGEUSDT', 'ADAUSDT', 'TRXUSDT', 'LINKUSDT', 'AVAXUSDT', 'XLMUSDT', 'TONUSDT', 'SUIUSDT', 'DOTUSDT']
 
     backtester = PairTrading(pairs, initial_capital=1000, weeks=52)

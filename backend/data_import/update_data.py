@@ -135,17 +135,18 @@ def process_two():
 
 
 if __name__ == '__main__':
-    # Create processes
-    p1 = Process(target=process_one)
-    p2 = Process(target=process_two)
+    # # Create processes
+    # p1 = Process(target=process_one)
+    # p2 = Process(target=process_two)
 
-    # Start processes
-    p1.start()
-    p2.start()
+    # # Start processes
+    # p1.start()
+    # p2.start()
 
-    # Wait for both processes to complete
-    p1.join()
-    p2.join()
+    # # Wait for both processes to complete
+    # p1.join()
+    # p2.join()
+    update_keyMetricsTTM()
 
     print("All updates completed.")
 

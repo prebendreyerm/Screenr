@@ -43,14 +43,14 @@ merged_df = pd.merge(
 
 # Preprocessing: Remove unwanted rows
 merged_df = merged_df.dropna()
-merged_df = merged_df[
-    (merged_df['enterpriseValue'] > 0) &
-    (merged_df['evToFreeCashFlow'] > 0) &
-    (merged_df['enterpriseValueOverEBITDATTM'] > 0) &
-    (merged_df['payoutRatio'] > 0) &
-    (merged_df['payoutRatio'] < 0.2) &
-    (merged_df['dividendYield'] > 0)
-]
+# merged_df = merged_df[
+#     (merged_df['enterpriseValue'] > 0) &
+#     (merged_df['evToFreeCashFlow'] > 0) &
+#     (merged_df['enterpriseValueOverEBITDATTM'] > 0) &
+#     (merged_df['payoutRatio'] > 0) &
+#     (merged_df['payoutRatio'] < 0.2) &
+#     (merged_df['dividendYield'] > 0)
+# ]
 
 # Convert calendarYear to integer for filtering
 merged_df['calendarYear'] = merged_df['calendarYear'].astype(int)
@@ -83,5 +83,15 @@ columns_to_display = [
 
 lowest_per_sector = lowest_per_sector[columns_to_display]
 
-# Print the final DataFrame
-print(lowest_per_sector)
+# Rank stocks based on enterprise value and dividend growth
+lowest_per_sector['ev_rank'] = lowest_per_sector['enterpriseValue'].rank(method='min', ascending=True)
+lowest_per_sector['div_growth_rank'] = lowest_per_sector['dividendsperShareGrowth'].rank(method='min', ascending=False)
+
+# Compute final score (you can adjust weights if needed)
+lowest_per_sector['final_score'] = lowest_per_sector['ev_rank'] + lowest_per_sector['div_growth_rank']
+
+# Sort stocks by final score (lower score is better)
+ranked_stocks = lowest_per_sector.sort_values(by='final_score')
+
+# Display the ranked stocks
+print(ranked_stocks)

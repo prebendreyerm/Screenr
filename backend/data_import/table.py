@@ -78,7 +78,8 @@ def delete_strategy(strategy_name):
 
     print("Finished deleting the strategy.")
 
-a = get_table('historicalPricesAnnual')
+a = get_table('financialGrowthAnnual')
+b = get_table('keyMetricsTTM')
 print(a.columns)
-
+print(b.columns)
 
