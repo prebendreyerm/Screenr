@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pair Trading Bot</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pair Trading Bot</h1>
+    <h2>Active Pairs</h2>
+    <table id="active-pairs-table">
+        <thead>
+            <tr>
+                <th>Pair</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    
+    <h2>Positions</h2>
+    <table id="positions-table">
+        <thead>
+            <tr>
+                <th>Pair</th>
+                <th>Long Symbol</th>
+                <th>Long Amount</th>
+                <th>Long Entry Price</th>
+                <th>Short Symbol</th>
+                <th>Short Amount</th>
+                <th>Short Entry Price</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    
+    <h2>Capital</h2>
+    <p id="capital"></p>
+    
+    <script>
+        function updateData() {
+            $.getJSON('/data', function(data) {
+                // Update active pairs table
+                const activePairsTable = $('#active-pairs-table tbody');
+                activePairsTable.empty();
+                data.active_pairs.forEach(pair => {
+                    activePairsTable.append(`<tr><td>${pair[0]} - ${pair[1]}</td><td>${new Date(pair_trading.active_pairs[pair]).toLocaleString()}</td></tr>`);
+                });
+                
+                // Update positions table
+                const positionsTable = $('#positions-table tbody');
+                positionsTable.empty();
+                for (const [pair, position] of Object.entries(data.positions)) {
+                    positionsTable.append(`
+                        <tr>
+                            <td>${pair}</td>
+                            <td>${position.long.symbol}</td>
+                            <td>${position.long.amount}</td>
+                            <td>${position.long.entry_price}</td>
+                            <td>${position.short.symbol}</td>
+                            <td>${position.short.amount}</td>
+                            <td>${position.short.entry_price}</td>
+                        </tr>
+                    `);
+                }
+
+                // Update capital
+                $('#capital').text(data.capital);
+            });
+        }
+        
+        // Update data every 5 seconds
+        setInterval(updateData, 5000);
+    </script>
+</body>
+</html>

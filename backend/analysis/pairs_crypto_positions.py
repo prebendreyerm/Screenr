@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import time
 from statsmodels.tsa.stattools import coint
+import statsmodels as sm
 
 class PairTrading:
     def __init__(self, pairs, initial_capital=1000, fee=0.002, weeks=52):

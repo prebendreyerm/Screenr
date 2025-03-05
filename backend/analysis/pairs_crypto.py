@@ -1,145 +1,345 @@
-import datetime
-import requests
 import pandas as pd
+import numpy as np
+import os
+import requests
 import time
+import datetime
 from statsmodels.tsa.stattools import coint
+import statsmodels.api as sm
+from matplotlib import pyplot as plt
 
 class PairTrading:
     def __init__(self, pairs, initial_capital=1000, fee=0.002, weeks=52):
+        '''
+        Initializing function of the class
+        '''
         self.pairs = pairs
         self.initial_capital = initial_capital
         self.fee = fee
         self.weeks = weeks
-        self.capital = initial_capital
-        self.capital_history = []
+        self.capital = initial_capital  # Total capital
         self.now = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
-        self.rolling_data = {}  # Store rolling price data
-
-    def fetch_btc_data(self, symbol, interval='1m', period=7, end_time=None):
-        """Fetches historical data for the given period."""
-        if end_time is None:
-            end_time = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
-        start_time_ms = end_time - (period * 24 * 60 * 60 * 1000)
-
-        url = "https://api.binance.com/api/v3/klines"
+        self.rolling_data = {}
+        self.positions = {}
+        self.active_pairs = {}
+        self.capital_per_pair = {}
+    
+    def fetch_last_price(self, symbol):
+        '''
+        Function to fetch the most recent price of a given asset.
+        '''
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            response = response.json()
+            return response
+        except requests.exceptions.RequestException as e:
+            print(f'Error fetching last price data for {symbol}: {e}')
+            return None
+    
+    def fetch_price_continuous(self, symbol):
+        '''
+        A continuous function - simply calling the fetch_last_price function continuously, *** MIGHT BE REMOVED ***
+        '''
+        while True:
+            price = self.fetch_last_price(symbol)
+            if price:
+                print(f"{symbol}: {price['price']}")
+            else:
+                print(f"Failed to fetch prices for pair: {symbol}")
+                
+    def fetch_historical_prices(self, symbol):
+        '''
+        Function to fetch the previous seven days at the time of initialization.
+        '''
+        end_time = int(time.time() * 1000)
+        start_time = end_time - 7 * 24 * 60 * 60 * 1000  # 7 days in milliseconds
+        url = f"https://api.binance.com/api/v3/klines"
+        limit = 1000  # Binance API limit for klines
         all_data = []
 
-        while start_time_ms < end_time:
+        while start_time < end_time:
             params = {
-                "symbol": symbol,
-                "interval": interval,
-                "startTime": start_time_ms,
-                "endTime": end_time,
-                "limit": 1000
+                'symbol': symbol,
+                'interval': '1m',
+                'startTime': start_time,
+                'endTime': end_time,
+                'limit': limit
             }
-
-            response = requests.get(url, params=params)
-            if response.status_code != 200:
-                print(f"Error fetching data for {symbol}: {response.status_code}, {response.text}")
+            
+            try:
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                if not data:
+                    break
+                
+                # Convert the data into a pandas DataFrame
+                df = pd.DataFrame(data, columns=[
+                    'timestamp', 'open', 'high', 'low', 'close', 'volume', 
+                    'close_time', 'quote_asset_volume', 'number_of_trades', 
+                    'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+                ])
+                
+                # Convert timestamp to datetime
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                
+                all_data.append(df[['close']])
+                
+                # Update the start_time for the next batch
+                start_time = int(df.index[-1].timestamp() * 1000) + 1  # Add 1 ms to avoid overlap
+            
+            except requests.exceptions.RequestException as e:
+                print(f'Error fetching historical price data for {symbol}: {e}')
                 break
-
-            data = response.json()
-            if not data:
-                break
-
-            all_data.extend(data)
-            start_time_ms = data[-1][0] + 60000  # Move forward 1 minute
-
-        timestamps = [datetime.datetime.fromtimestamp(candle[0] / 1000, tz=datetime.timezone.utc) for candle in all_data]
-        closing_prices = [float(candle[4]) for candle in all_data]
-
-        df = pd.DataFrame({'timestamp': timestamps, 'close': closing_prices})
-        df.set_index('timestamp', inplace=True)
-
-        return df
-
-    def initialize_rolling_data(self):
-        """Fetches the last 7 days of data for all pairs and stores them in rolling_data."""
-        print("\nInitializing rolling window with historical data...")
-        for pair in self.pairs:
-            self.rolling_data[pair] = self.fetch_btc_data(pair, period=7)
-
-    def update_rolling_data(self, symbol, new_price):
-        """Updates the rolling window by appending new price and removing the oldest."""
-        now = datetime.datetime.now(datetime.timezone.utc)
-        if symbol in self.rolling_data:
-            df = self.rolling_data[symbol]
-            df.loc[now] = new_price  # Append new data point
-
-            # Keep only the last 7 days of data
-            cutoff_time = now - datetime.timedelta(days=7)
-            self.rolling_data[symbol] = df[df.index >= cutoff_time]
-
-    def check_cointegration(self, df1, df2):
-        """Runs a cointegration test on two time series."""
-        if len(df1) == len(df2):
-            score, p_value, _ = coint(df1['close'], df2['close'])
-            return p_value
-        return 1  # Non-stationary if length mismatch
-
-    def run_cointegration_test(self):
-        """Checks cointegration on updated rolling window for all pairs."""
-        print("\nRunning cointegration test on updated data...\n")
-         # Print out the data for one of the pairs (e.g., 'BTCUSDT' and 'ETHUSDT') for debugging
-        print("Data used in cointegration test:")
-        print(self.rolling_data[symbol2].tail())  # Print the last few data points for symbol2
-        stationary_pairs = []
-        for i in range(len(self.pairs)):
-            for j in range(i+1, len(self.pairs)):
-                df1, df2 = self.rolling_data[self.pairs[i]], self.rolling_data[self.pairs[j]]
-                p_value = self.check_cointegration(df1, df2)
-                if p_value < 0.05:
-                    stationary_pairs.append((self.pairs[i], self.pairs[j], p_value))
-
-        print(f"Found {len(stationary_pairs)} stationary pairs.")
-        for pair in stationary_pairs:
-            print(f"{pair[0]} - {pair[1]}: p-value = {pair[2]:.6f}")
-
-        return stationary_pairs
-
-    def get_binance_last_price(self, symbol):
-        """Fetches the latest price of a symbol from Binance."""
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            return float(response.json()['price'])
+        
+        if all_data:
+            return pd.concat(all_data)
         else:
-            print(f"Error fetching last price: {response.status_code}, {response.text}")
             return None
+        
+    def rolling_window(self, symbol):
+        '''
+        Function to update the rolling window with the latest price.
+        '''
+        if symbol not in self.rolling_data:
+            self.rolling_data[symbol] = self.fetch_historical_prices(symbol)
+        
+        next_price_data = self.fetch_last_price(symbol)
+        if next_price_data:
+            next_price = float(next_price_data['price'])
+            current_time = pd.to_datetime(time.time(), unit='s')
+            
+            # Append the new price to the DataFrame
+            new_row = pd.DataFrame({'close': [next_price]}, index=[current_time])
+            self.rolling_data[symbol] = pd.concat([self.rolling_data[symbol], new_row])
+            
+            # Remove the oldest row to maintain the size
+            if len(self.rolling_data[symbol]) > 7 * 24 * 60:  # 7 days * 24 hours * 60 minutes
+                self.rolling_data[symbol] = self.rolling_data[symbol].iloc[1:]
+            
+            # Print the last few rows for debugging
+            # print(symbol, self.rolling_data[symbol].tail())
+                      
+    def check_cointegration(self, symbol1, symbol2):
+        '''
+        Function to check the cointegration between two assets, symbol1 and symbol2 should be a single column of prices.
+        For instance, symbol1 = self.rolling_window(symbol1)['close']
+        '''
+        price1 = self.rolling_data[symbol1]['close']
+        price2 = self.rolling_data[symbol2]['close']
 
-    def fetch_price_continuously(self):
-        """Fetches live prices, updates rolling data, and runs cointegration tests in real-time."""
-        print("\nFetching live prices...\n")
+        _, p_value, _ = coint(price1, price2)
+        if p_value < 0.05:
+            return True
+        else:
+            return False
 
-        # Initialize rolling window with historical data
-        self.initialize_rolling_data()
+    def check_active_pairs(self, symbol1, symbol2):
+        '''
+        Function to identify active pairs and store it within the active pairs dictionary with timestamps.
+        If the pair is already active, it updates the timestamp.
+        '''
+        pair = (symbol1, symbol2)
+        if self.check_cointegration(symbol1, symbol2):
+            if pair in self.active_pairs:
+                print(f"Pair {symbol1}-{symbol2} is already active. Updating timestamp.")
+            else:
+                print(f"Pair {symbol1}-{symbol2} added to active pairs.")
+            
+            # Update or add the pair with the current timestamp
+            self.active_pairs[pair] = datetime.datetime.now()
+        # else:
+        #     print(f"Pair {symbol1}-{symbol2} is not cointegrated.")
 
-        # Print header row
-        print("Timestamp".ljust(20) + " ".join(symbol.ljust(10) for symbol in self.pairs))
-        print("=" * (20 + len(self.pairs) * 11))
+    def remove_expired_pairs(self):
+        '''
+        Function to remove pairs that have been active for more than seven days.
+        '''
+        current_time = datetime.datetime.now()
+        to_remove = []
+        
+        for pair, timestamp in self.active_pairs.items():
+            if (current_time - timestamp).days >= 7:
+                to_remove.append(pair)
+        
+        for pair in to_remove:
+            del self.active_pairs[pair]
+            print(f"Pair {pair} removed from active pairs due to expiration.")
+    
+    def open_position(self, symbol1, symbol2):
+        '''
+        Function to open a position in a given asset with the available capital based on the number of active pairs.
+        '''
+        pair = (symbol1, symbol2)
+        if pair in self.positions:
+            print(f"Position already open for pair {symbol1}-{symbol2}.")
+            return
+        
+        num_active_pairs = len(self.active_pairs)
+        if num_active_pairs == 0:
+            print("No active pairs to allocate capital.")
+            return
+        
+        capital_per_pair = self.capital / num_active_pairs
+        long_capital = capital_per_pair / 2
+        short_capital = capital_per_pair / 2
 
-        while True:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            prices = []
+        # Fetch the latest prices for both symbols
+        price1 = float(self.fetch_last_price(symbol1)['price'])
+        price2 = float(self.fetch_last_price(symbol2)['price'])
 
-            for symbol in self.pairs:
-                price = self.get_binance_last_price(symbol)
-                if price is not None:
-                    self.update_rolling_data(symbol, price)  # Update rolling data
-                prices.append(f"{price:.6f}" if price is not None else "N/A")
+        # Calculate the amount of each asset to buy/sell
+        long_amount = long_capital / price1
+        short_amount = short_capital / price2
+        
+        # Subtract the allocated capital from the total capital
+        self.capital -= capital_per_pair
+        
+        # Store the position details
+        self.positions[pair] = {
+            'long': {
+                'symbol': symbol1,
+                'amount': long_amount,
+                'entry_price': price1,
+                'entry_capital': long_capital
+            },
+            'short': {
+                'symbol': symbol2,
+                'amount': short_amount,
+                'entry_price': price2,
+                'entry_capital': short_capital
+            }
+        }
+        
+        print(f"Opened long position for {symbol1} with capital {long_capital} and short position for {symbol2} with capital {short_capital}.")
+    
+    def close_position(self, symbol1, symbol2):
+        '''
+        Function to close a position in a given asset returning the profit/loss to the total capital.
+        '''
+        pair = (symbol1, symbol2)
+        if pair not in self.positions:
+            print(f"No open position for pair {symbol1}-{symbol2}.")
+            return
+        
+        # Fetch the latest prices for both symbols
+        price1 = float(self.fetch_last_price(symbol1)['price'])
+        price2 = float(self.fetch_last_price(symbol2)['price'])
+        
+        # Retrieve the position details
+        position = self.positions[pair]
 
-            # Print row with timestamp and latest prices
-            print(timestamp.ljust(20) + " ".join(price.ljust(10) for price in prices))
+        # Calculate the profit/loss for the long position
+        long_profit_loss = (price1 - position['long']['entry_price']) * position['long']['amount']
+        
+        # Calculate the profit/loss for the short position
+        short_profit_loss = (position['short']['entry_price'] - price2) * position['short']['amount']
+        
+        # Calculate the total profit/loss
+        total_profit_loss = long_profit_loss + short_profit_loss
+        
+        # Add the total profit/loss back to the capital
+        self.capital += position['long']['entry_capital'] + position['short']['entry_capital'] + total_profit_loss
+        
+        # Remove the position from the positions dictionary
+        del self.positions[pair]
+        
+        print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
+    
+    def check_capital(self):
+        print(f'Total capital:{self.capital}')
 
-            # Run cointegration test after updating rolling window
-            self.run_cointegration_test()
+    def calculate_beta(self, symbol1, symbol2):
+        """
+        Estimate beta coefficient using OLS regression for two symbols.
+        """
+        # Convert to NumPy arrays and ensure the values are floats
+        y = self.rolling_data[symbol1]['close'].to_numpy().astype(float)
+        X = self.rolling_data[symbol2]['close'].to_numpy().astype(float)
+        
+        # Add constant for intercept
+        X = sm.add_constant(X)
+        
+        # Perform OLS regression
+        model = sm.OLS(y, X).fit()
+        
+        # Get the beta (slope) coefficient
+        beta = model.params[1]
+        
+        return beta
 
-            time.sleep(32)  # Wait before fetching again
+    def calculate_spread(self, symbol1, symbol2):
+        """
+        Calculate the spread between two symbols using the hedge ratio β.
+        Assumes rolling_data has synchronized timestamps.
+        """
+        if symbol1 not in self.rolling_data or symbol2 not in self.rolling_data:
+            return None
+        
+        # Get price series
+        prices1 = self.rolling_data[symbol1]['close'].to_numpy().astype(float)
+        prices2 = self.rolling_data[symbol2]['close'].to_numpy().astype(float)
 
-# Example usage
-if __name__ == "__main__":
-    pairs = ["AVAUSDT", "BTCUSDT", "ETHUSDT", "SOLUSDT", "LTCUSDT", "UNIUSDT", "AAVEUSDT", 'XRPUSDT', 
+        # Compute hedge ratio (β)
+        beta = self.calculate_beta(symbol1, symbol2)
+
+        # Calculate spread using hedge ratio
+        spread = prices1 - beta * prices2
+        return spread
+
+
+
+    def main(self):
+        '''
+        Main function to contain the logic binding functions together, fetching all data, running tests, and executing changes in positions.
+        '''
+        cryptocurrencies = ['AVAUSDT', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT', 'UNIUSDT', 'AAVEUSDT', 'XRPUSDT', 
              'DOGEUSDT', 'ADAUSDT', 'TRXUSDT', 'LINKUSDT', 'AVAXUSDT', 'XLMUSDT', 'TONUSDT', 'SUIUSDT', 'DOTUSDT']
+        
+        while True:
+            # Update rolling windows
+            for symbol in cryptocurrencies:
+                self.rolling_window(symbol)
 
-    backtester = PairTrading(pairs, initial_capital=1000, weeks=52)
-    backtester.fetch_price_continuously()
+            # Check for cointegration and manage pairs
+            for i in range(len(cryptocurrencies)):
+                for j in range(i + 1, len(cryptocurrencies)):
+                    symbol1 = cryptocurrencies[i]
+                    symbol2 = cryptocurrencies[j]
+                    self.check_active_pairs(symbol1, symbol2)
+            self.remove_expired_pairs()
+
+            # Check spread conditions and open positions
+            for symbol1, symbol2 in self.active_pairs:
+                spread = self.calculate_spread(symbol1, symbol2)
+                
+                if spread is None:
+                    continue  # Skip if data is missing
+                
+                mean = spread.mean()
+                std = spread.std()
+                upper_open = mean + 2 * std
+                lower_open = mean - 2 * std
+                upper_close = mean + 0.5 * std
+                lower_close = mean - 0.5 * std
+                pair = (symbol1, symbol2)
+
+                if spread[-1] > upper_open:  # Short first, long second
+                    self.open_position(symbol1, symbol2)
+                    print(f"Opened SHORT on {symbol1} and LONG on {symbol2} (Spread: {spread[-1]:.6f})")
+                    
+                elif spread[-1] < lower_open:  # Long first, short second
+                    self.open_position(symbol1, symbol2)
+                    print(f"Opened LONG on {symbol1} and SHORT on {symbol2} (Spread: {spread[-1]:.6f})")
+                if lower_close < spread[-1] < upper_close and pair in self.positions:
+                    self.close_position(symbol1, symbol2)
+                    print(f'Closed position on {symbol1} and {symbol2}')
+            self.check_capital()
+
+if __name__ == '__main__':
+    pair_trading = PairTrading(pairs=[])
+    pair_trading.main()
