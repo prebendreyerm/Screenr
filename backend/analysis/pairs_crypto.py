@@ -133,7 +133,7 @@ class PairTrading:
         price2 = self.rolling_data[symbol2]['close']
 
         _, p_value, _ = coint(price1, price2)
-        if p_value < 0.05:
+        if p_value < 0.2:
             return True
         else:
             return False
@@ -322,8 +322,8 @@ class PairTrading:
                 
                 mean = spread.mean()
                 std = spread.std()
-                upper_open = mean + 2 * std
-                lower_open = mean - 2 * std
+                upper_open = mean + 1 * std
+                lower_open = mean - 1 * std
                 upper_close = mean + 0.5 * std
                 lower_close = mean - 0.5 * std
                 pair = (symbol1, symbol2)

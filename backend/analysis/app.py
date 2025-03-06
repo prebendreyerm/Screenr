@@ -1,34 +1,48 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template
 import threading
-import time
+import numpy as np
 from pairs_crypto import PairTrading
 
 app = Flask(__name__)
 
-# Create a global instance of your PairTrading class
+# Assuming PairTrading class is already defined as in your previous code
 pair_trading = PairTrading(pairs=[])
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    active_pairs = [(pair, timestamp) for pair, timestamp in pair_trading.active_pairs.items()]
+    positions = [(pair, details) for pair, details in pair_trading.positions.items()]
+    
+    # Fetch the latest prices for all symbols in positions
+    last_prices = {}
+    for pair, details in positions:
+        last_prices[details['long']['symbol']] = pair_trading.fetch_last_price(details['long']['symbol'])['price']
+        last_prices[details['short']['symbol']] = pair_trading.fetch_last_price(details['short']['symbol'])['price']
+    
+    # Calculate spreads and their limits
+    spread_limits = {}
+    for pair in pair_trading.active_pairs:
+        spread = pair_trading.calculate_spread(pair[0], pair[1])
+        if spread is not None:
+            mean = np.mean(spread)
+            std = np.std(spread)
+            upper_limit = mean + std
+            lower_limit = mean - std
+            spread_limits[pair] = {
+                'spread': spread[-1],
+                'upper_limit': upper_limit,
+                'lower_limit': lower_limit
+            }
+    
+    capital = pair_trading.capital
+    return render_template('index.html', active_pairs=active_pairs, positions=positions, spread_limits=spread_limits, last_prices=last_prices, capital=capital)
 
-@app.route('/data')
-def data():
-    # Return the required data as JSON
-    return jsonify({
-        'active_pairs': list(pair_trading.active_pairs.keys()),
-        'positions': pair_trading.positions,
-        'capital': pair_trading.capital
-    })
-
-def run_bot():
-    # Run the main function of the bot in a separate thread
+def run_trading():
     pair_trading.main()
 
 if __name__ == '__main__':
-    # Start the bot in a separate thread
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
+    # Start the pair trading logic in a separate thread
+    threading.Thread(target=run_trading, daemon=True).start()
     
-    # Run the Flask app
+    # Start the Flask web server
     app.run(debug=True)

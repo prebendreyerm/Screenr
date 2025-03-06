@@ -3,88 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pair Trading Bot</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <title>Pair Trading Dashboard</title>
     <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .container {
+            width: 80%;
+            margin: 20px auto;
+            background-color: #1e1e1e;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #ffffff;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: #252525;
         }
         th, td {
-            border: 1px solid black;
-            padding: 8px;
+            border: 1px solid #333;
+            padding: 12px;
             text-align: left;
         }
+        th {
+            background-color: #333;
+            color: #ffffff;
+        }
+        tr:nth-child(even) {
+            background-color: #2a2a2a;
+        }
+        .capital {
+            text-align: center;
+            font-size: 1.2em;
+            color: #ffffff;
+        }
     </style>
+    <script>
+        // Refresh the page every 60 seconds
+        setInterval(function() {
+            window.location.reload();
+        }, 60000);
+    </script>
 </head>
 <body>
-    <h1>Pair Trading Bot</h1>
-    <h2>Active Pairs</h2>
-    <table id="active-pairs-table">
-        <thead>
+    <div class="container">
+        <h1>Pair Trading Dashboard</h1>
+        
+        <h2>Active Pairs</h2>
+        <table>
             <tr>
                 <th>Pair</th>
                 <th>Timestamp</th>
             </tr>
-        </thead>
-        <tbody>
-        </tbody>
-    </table>
-    
-    <h2>Positions</h2>
-    <table id="positions-table">
-        <thead>
+            {% for pair, timestamp in active_pairs %}
+            <tr>
+                <td>{{ pair[0] }} : {{ pair[1] }}</td>
+                <td>{{ timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <h2>Positions</h2>
+        <table>
             <tr>
                 <th>Pair</th>
                 <th>Long Symbol</th>
                 <th>Long Amount</th>
                 <th>Long Entry Price</th>
+                <th>Long Entry Capital</th>
+                <th>Long Last Price</th>
                 <th>Short Symbol</th>
                 <th>Short Amount</th>
                 <th>Short Entry Price</th>
+                <th>Short Entry Capital</th>
+                <th>Short Last Price</th>
             </tr>
-        </thead>
-        <tbody>
-        </tbody>
-    </table>
-    
-    <h2>Capital</h2>
-    <p id="capital"></p>
-    
-    <script>
-        function updateData() {
-            $.getJSON('/data', function(data) {
-                // Update active pairs table
-                const activePairsTable = $('#active-pairs-table tbody');
-                activePairsTable.empty();
-                data.active_pairs.forEach(pair => {
-                    activePairsTable.append(`<tr><td>${pair[0]} - ${pair[1]}</td><td>${new Date(pair_trading.active_pairs[pair]).toLocaleString()}</td></tr>`);
-                });
-                
-                // Update positions table
-                const positionsTable = $('#positions-table tbody');
-                positionsTable.empty();
-                for (const [pair, position] of Object.entries(data.positions)) {
-                    positionsTable.append(`
-                        <tr>
-                            <td>${pair}</td>
-                            <td>${position.long.symbol}</td>
-                            <td>${position.long.amount}</td>
-                            <td>${position.long.entry_price}</td>
-                            <td>${position.short.symbol}</td>
-                            <td>${position.short.amount}</td>
-                            <td>${position.short.entry_price}</td>
-                        </tr>
-                    `);
-                }
-
-                // Update capital
-                $('#capital').text(data.capital);
-            });
-        }
+            {% for pair, details in positions %}
+            <tr>
+                <td>{{ pair[0] }} : {{ pair[1] }}</td>
+                <td>{{ details['long']['symbol'] }}</td>
+                <td>{{ details['long']['amount'] }}</td>
+                <td>{{ details['long']['entry_price'] }}</td>
+                <td>{{ details['long']['entry_capital'] }}</td>
+                <td>{{ last_prices[details['long']['symbol']] }}</td>
+                <td>{{ details['short']['symbol'] }}</td>
+                <td>{{ details['short']['amount'] }}</td>
+                <td>{{ details['short']['entry_price'] }}</td>
+                <td>{{ details['short']['entry_capital'] }}</td>
+                <td>{{ last_prices[details['short']['symbol']] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
         
-        // Update data every 5 seconds
-        setInterval(updateData, 5000);
-    </script>
+        <h2>Spread</h2>
+        <table>
+            <tr>
+                <th>Pair</th>
+                <th>Spread</th>
+                <th>Upper Limit</th>
+                <th>Lower Limit</th>
+            </tr>
+            {% for pair, limits in spread_limits.items() %}
+            <tr>
+                <td>{{ pair[0] }} : {{ pair[1] }}</td>
+                <td>{{ limits['spread'] }}</td>
+                <td>{{ limits['upper_limit'] }}</td>
+                <td>{{ limits['lower_limit'] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        
+        <h2>Capital</h2>
+        <p class="capital">Total Capital: {{ capital }}</p>
+    </div>
 </body>
 </html>
