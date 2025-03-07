@@ -23,6 +23,7 @@ class PairTrading:
         self.positions = {}
         self.active_pairs = {}
         self.capital_per_pair = {}
+        self.last_prices = {}
     
     def fetch_last_price(self, symbol):
         '''
@@ -30,12 +31,22 @@ class PairTrading:
         '''
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout = 1)
             response.raise_for_status()
-            response = response.json()
-            return response
+            data = response.json()
+
+            # Update and return the latest price
+            self.last_prices[symbol] = data['price']
+            return data
+        
         except requests.exceptions.RequestException as e:
             print(f'Error fetching last price data for {symbol}: {e}')
+            
+
+            # Return last known price if available
+            if symbol in self.last_prices:
+                print(f'Returning last known price for {symbol}: {self.last_prices[symbol]}')
+                return {'symbol': symbol, 'price': self.last_prices[symbol]}
             return None
     
     def fetch_price_continuous(self, symbol):
@@ -196,8 +207,8 @@ class PairTrading:
         long_amount = long_capital / price1
         short_amount = short_capital / price2
         
-        # Subtract the allocated capital from the total capital
-        self.capital -= capital_per_pair
+        # Subtract the allocated capital and the fee from the total capital
+        self.capital -= (capital_per_pair + (capital_per_pair * self.fee))
         
         # Store the position details
         self.positions[pair] = {
@@ -227,28 +238,38 @@ class PairTrading:
             return
         
         # Fetch the latest prices for both symbols
-        price1 = float(self.fetch_last_price(symbol1)['price'])
-        price2 = float(self.fetch_last_price(symbol2)['price'])
+        price1 = float(self.fetch_last_price(symbol1)['price'])  # Current price for the long position
+        price2 = float(self.fetch_last_price(symbol2)['price'])  # Current price for the short position
         
         # Retrieve the position details
         position = self.positions[pair]
 
+        # Calculate the total amount received from closing the long position
+        long_total_received = price1 * position['long']['amount']
+        # Calculate the total amount received from closing the short position
+        short_total_received = price2 * position['short']['amount']
+        
         # Calculate the profit/loss for the long position
-        long_profit_loss = (price1 - position['long']['entry_price']) * position['long']['amount']
+        long_profit_loss = long_total_received - position['long']['entry_capital']
         
         # Calculate the profit/loss for the short position
-        short_profit_loss = (position['short']['entry_price'] - price2) * position['short']['amount']
+        short_profit_loss = position['short']['entry_capital'] - short_total_received
         
         # Calculate the total profit/loss
         total_profit_loss = long_profit_loss + short_profit_loss
+
+        # Deduct the fee from the total received for each position
+        long_total_after_fee = long_total_received - (long_total_received * self.fee)
+        short_total_after_fee = short_total_received - (short_total_received * self.fee)
         
-        # Add the total profit/loss back to the capital
-        self.capital += position['long']['entry_capital'] + position['short']['entry_capital'] + total_profit_loss
+        # Update capital with the total received after fee deduction for both positions
+        self.capital += long_total_after_fee + short_total_after_fee
         
         # Remove the position from the positions dictionary
         del self.positions[pair]
         
         print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
+
     
     def check_capital(self):
         print(f'Total capital:{self.capital}')
