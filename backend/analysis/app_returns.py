@@ -1,7 +1,7 @@
 from flask import Flask, render_template
 import threading
 import numpy as np
-from pairs_crypto import PairTrading
+from pairs_crypto_returns_spread import PairTrading
 
 app = Flask(__name__)
 
@@ -45,4 +45,4 @@ if __name__ == '__main__':
     threading.Thread(target=run_trading, daemon=True).start()
     
     # Start the Flask web server
-    app.run(debug=True)
+    app.run(debug=False)

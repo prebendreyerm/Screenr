@@ -274,22 +274,33 @@ class PairTrading:
 
     def calculate_spread(self, symbol1, symbol2):
         """
-        Calculate the spread between two symbols using the hedge ratio β.
+        Calculate the return-based spread between two symbols.
         Assumes rolling_data has synchronized timestamps.
         """
         if symbol1 not in self.rolling_data or symbol2 not in self.rolling_data:
             return None
-        
-        # Get price series
-        prices1 = self.rolling_data[symbol1]['close'].to_numpy().astype(float)
-        prices2 = self.rolling_data[symbol2]['close'].to_numpy().astype(float)
 
-        # Compute hedge ratio (β)
-        beta = self.calculate_beta(symbol1, symbol2)
+        # Convert 'close' prices from string to float before applying pct_change
+        prices1 = self.rolling_data[symbol1]['close'].astype(float)
+        prices2 = self.rolling_data[symbol2]['close'].astype(float)
 
-        # Calculate spread using hedge ratio
-        spread = prices1 - beta * prices2
+        # Compute returns
+        returns1 = prices1.pct_change()
+        returns2 = prices2.pct_change()
+
+        # Drop the first NaN value
+        returns1 = returns1.dropna()
+        returns2 = returns2.dropna()
+
+        # Convert to NumPy array (optional, but useful for further calculations)
+        returns1 = returns1.to_numpy()
+        returns2 = returns2.to_numpy()
+
+        # Calculate spread directly (no beta needed for return-based approach)
+        spread = returns1 - returns2
         return spread
+
+
 
 
 
@@ -297,6 +308,7 @@ class PairTrading:
         '''
         Main function to contain the logic binding functions together, fetching all data, running tests, and executing changes in positions.
         '''
+        print("Running main function")
         cryptocurrencies = ['AVAUSDT', 'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT', 'UNIUSDT', 'AAVEUSDT', 'XRPUSDT', 
              'DOGEUSDT', 'ADAUSDT', 'TRXUSDT', 'LINKUSDT', 'AVAXUSDT', 'XLMUSDT', 'TONUSDT', 'SUIUSDT', 'DOTUSDT']
         
