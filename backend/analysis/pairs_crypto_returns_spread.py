@@ -362,12 +362,14 @@ class PairTrading:
                 pair = (symbol1, symbol2)
 
                 if spread[-1] > upper_open:  # Short first, long second
-                    self.open_position(symbol1, symbol2)
-                    print(f"Opened SHORT on {symbol1} and LONG on {symbol2} (Spread: {spread[-1]:.6f})")
+                    if pair not in self.positions:
+                        self.open_position(symbol2, symbol1)  # Corrected order
+                        print(f"Opened SHORT on {symbol1} and LONG on {symbol2} (Spread: {spread[-1]:.6f})")
                     
                 elif spread[-1] < lower_open:  # Long first, short second
-                    self.open_position(symbol1, symbol2)
-                    print(f"Opened LONG on {symbol1} and SHORT on {symbol2} (Spread: {spread[-1]:.6f})")
+                    if pair not in self.positions:
+                        self.open_position(symbol1, symbol2)  # Corrected order
+                        print(f"Opened LONG on {symbol1} and SHORT on {symbol2} (Spread: {spread[-1]:.6f})")
                 if lower_close < spread[-1] < upper_close and pair in self.positions:
                     self.close_position(symbol1, symbol2)
                     print(f'Closed position on {symbol1} and {symbol2}')
