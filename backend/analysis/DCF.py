@@ -17,24 +17,23 @@ df = pd.read_sql_query('SELECT * FROM Assets', conn)
 undervalued_stocks = []
 
 for symbol in df['symbol']:
-    url = f'https://financialmodelingprep.com/api/v3/discounted-cash-flow/{symbol}?apikey={api_key}'
+    url = f'https://financialmodelingprep.com/stable/custom-discounted-cash-flow?symbol={symbol}&apikey={api_key}'
     response = requests.get(url)
-    
     if response.status_code == 200:
         data = response.json()
         if data and isinstance(data, list) and len(data) > 0:
             result = data[0]
-            dcf = result.get("dcf")
-            stock_price = result.get("Stock Price")
+            equity_value_per_share = result.get("equityValuePerShare")
+            stock_price = result.get("price")
 
-            if dcf is not None and stock_price is not None and stock_price > 0:
-                undervaluation = ((dcf - stock_price) / stock_price) * 100  # Percentage undervaluation
+            if equity_value_per_share is not None and stock_price is not None and stock_price > 0:
+                undervaluation = ((equity_value_per_share - stock_price) / stock_price) * 100  # Percentage undervaluation
                 stock_entry = {
                     "symbol": symbol,
-                    "dcf": dcf,
+                    "equity_value_per_share": equity_value_per_share,
                     "stock_price": stock_price,
                     "undervaluation (%)": undervaluation,
-                    "date": result.get("date")
+                    "date": result.get("year")
                 }
 
                 if len(undervalued_stocks) < 20:

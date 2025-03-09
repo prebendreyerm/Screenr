@@ -24,6 +24,7 @@ class PairTrading:
         self.active_pairs = {}
         self.capital_per_pair = {}
         self.last_prices = {}
+        self.last_rolling_update = {}
     
     def fetch_last_price(self, symbol):
         '''
@@ -65,7 +66,7 @@ class PairTrading:
         Function to fetch the previous seven days at the time of initialization.
         '''
         end_time = int(time.time() * 1000)
-        start_time = end_time - 7 * 24 * 60 * 60 * 1000  # 7 days in milliseconds
+        start_time = end_time - 30 * 24 * 60 * 60 * 1000  # 7 days in milliseconds
         url = f"https://api.binance.com/api/v3/klines"
         limit = 1000  # Binance API limit for klines
         all_data = []
@@ -73,7 +74,7 @@ class PairTrading:
         while start_time < end_time:
             params = {
                 'symbol': symbol,
-                'interval': '1m',
+                'interval': '1h',
                 'startTime': start_time,
                 'endTime': end_time,
                 'limit': limit
@@ -115,25 +116,35 @@ class PairTrading:
     def rolling_window(self, symbol):
         '''
         Function to update the rolling window with the latest price.
+        Ensures updates occur only if at least an hour has passed.
         '''
-        if symbol not in self.rolling_data:
+        current_time = time.time()
+
+        # If first time, initialize the rolling data
+        if symbol not in self.rolling_data or self.rolling_data[symbol] is None:
+            print(f"[INIT] Fetching historical data for {symbol}")
             self.rolling_data[symbol] = self.fetch_historical_prices(symbol)
-        
+            self.last_rolling_update[symbol] = current_time
+            return
+
+
+        # Fetch the latest price
         next_price_data = self.fetch_last_price(symbol)
-        if next_price_data:
-            next_price = float(next_price_data['price'])
-            current_time = pd.to_datetime(time.time(), unit='s')
-            
-            # Append the new price to the DataFrame
-            new_row = pd.DataFrame({'close': [next_price]}, index=[current_time])
-            self.rolling_data[symbol] = pd.concat([self.rolling_data[symbol], new_row])
-            
-            # Remove the oldest row to maintain the size
-            if len(self.rolling_data[symbol]) > 7 * 24 * 60:  # 7 days * 24 hours * 60 minutes
-                self.rolling_data[symbol] = self.rolling_data[symbol].iloc[1:]
-            
-            # Print the last few rows for debugging
-            # print(symbol, self.rolling_data[symbol].tail())
+        
+        
+        next_price = float(next_price_data['price'])
+        new_timestamp = pd.to_datetime(current_time, unit='s')  # Convert time.time() correctly
+
+        # Append the new price to the DataFrame
+        new_row = pd.DataFrame({'close': [next_price]}, index=[new_timestamp])
+        self.rolling_data[symbol] = pd.concat([self.rolling_data[symbol], new_row])
+
+        # Maintain a max window size (30 days * 24 hours)
+        if len(self.rolling_data[symbol]) > 30 * 24:
+            self.rolling_data[symbol] = self.rolling_data[symbol].iloc[1:]
+
+        # Update last update timestamp
+        self.last_rolling_update[symbol] = current_time
                       
     def check_cointegration(self, symbol1, symbol2):
         '''
@@ -270,7 +281,6 @@ class PairTrading:
         
         print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
 
-    
     def check_capital(self):
         print(f'Total capital:{self.capital}')
 
@@ -320,10 +330,6 @@ class PairTrading:
         # Calculate spread directly (no beta needed for return-based approach)
         spread = returns1 - returns2
         return spread
-
-
-
-
 
     def main(self):
         '''
