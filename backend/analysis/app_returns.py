@@ -35,7 +35,8 @@ def index():
             }
     
     capital = pair_trading.capital
-    return render_template('index.html', active_pairs=active_pairs, positions=positions, spread_limits=spread_limits, last_prices=last_prices, capital=capital)
+    total_capital = pair_trading.total_capital
+    return render_template('index.html', active_pairs=active_pairs, positions=positions, spread_limits=spread_limits, last_prices=last_prices, capital=capital, total_capital=total_capital)
 
 def run_trading():
     pair_trading.main()

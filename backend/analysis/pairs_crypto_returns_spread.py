@@ -18,6 +18,7 @@ class PairTrading:
         self.fee = fee
         self.weeks = weeks
         self.capital = initial_capital  # Total capital
+        self.total_capital = initial_capital
         self.now = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
         self.rolling_data = {}
         self.positions = {}
@@ -66,7 +67,7 @@ class PairTrading:
         Function to fetch the previous seven days at the time of initialization.
         '''
         end_time = int(time.time() * 1000)
-        start_time = end_time - 30 * 24 * 60 * 60 * 1000  # 7 days in milliseconds
+        start_time = end_time - 30 * 24 * 60 * 60 * 1000  # 30 days in milliseconds
         url = f"https://api.binance.com/api/v3/klines"
         limit = 1000  # Binance API limit for klines
         all_data = []
@@ -127,11 +128,15 @@ class PairTrading:
             self.last_rolling_update[symbol] = current_time
             return
 
+        # Ensure updates occur only if at least an hour has passed
+        if current_time - self.last_rolling_update[symbol] < 3600:
+            return
 
         # Fetch the latest price
         next_price_data = self.fetch_last_price(symbol)
-        
-        
+        if next_price_data is None:
+            return
+
         next_price = float(next_price_data['price'])
         new_timestamp = pd.to_datetime(current_time, unit='s')  # Convert time.time() correctly
 
@@ -282,7 +287,28 @@ class PairTrading:
         print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
 
     def check_capital(self):
-        print(f'Total capital:{self.capital}')
+        total_position_value = 0
+        
+        for position in self.positions.values():
+            symbol1 = position['long']['symbol']
+            symbol2 = position['short']['symbol']
+            
+            # Fetch the latest prices for both symbols
+            price1 = float(self.fetch_last_price(symbol1)['price'])
+            price2 = float(self.fetch_last_price(symbol2)['price'])
+            
+            # Calculate the current value of the long position
+            long_value = price1 * position['long']['amount']
+            # Calculate the current value of the short position
+            short_value = price2 * position['short']['amount']
+            
+            # Add the values to the total position value
+            total_position_value += long_value + short_value
+        
+        self.total_capital = self.capital + total_position_value
+        print(f'Total capital including positions: {self.total_capital}')
+        print(f'Available capital: {self.capital}')
+        print(f'Total value of open positions: {total_position_value}')
 
     def calculate_beta(self, symbol1, symbol2):
         """
@@ -341,6 +367,7 @@ class PairTrading:
         
         while True:
             # Update rolling windows
+            print(self.rolling_data)
             for symbol in cryptocurrencies:
                 self.rolling_window(symbol)
 
