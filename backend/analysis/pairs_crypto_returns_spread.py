@@ -9,7 +9,7 @@ import statsmodels.api as sm
 from matplotlib import pyplot as plt
 
 class PairTrading:
-    def __init__(self, pairs, initial_capital=1000, fee=0.002, weeks=52):
+    def __init__(self, pairs, initial_capital=1000, fee=0.001, weeks=52):
         '''
         Initializing function of the class
         '''
@@ -26,6 +26,7 @@ class PairTrading:
         self.capital_per_pair = {}
         self.last_prices = {}
         self.last_rolling_update = {}
+        self.historical_data = {}
     
     def fetch_last_price(self, symbol):
         '''
@@ -114,6 +115,55 @@ class PairTrading:
         else:
             return None
         
+    def fetch_historical_prices_backtest(self, symbol, end_time):
+        '''
+        Function to fetch historical prices at 1-minute intervals for the past year.
+        '''
+        # Simulate fetching data a year ago
+        start_time = end_time - 365 * 24 * 60 * 60 * 1000  # 30 days in milliseconds
+        url = f"https://api.binance.com/api/v3/klines"
+        limit = 1000
+        all_data = []
+
+        while start_time < end_time:
+            params = {
+                'symbol': symbol,
+                'interval': '1m',
+                'startTime': start_time,
+                'endTime': end_time,
+                'limit': limit
+            }
+            
+            try:
+                response = requests.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                if not data:
+                    break
+                
+                df = pd.DataFrame(data, columns=[
+                    'timestamp', 'open', 'high', 'low', 'close', 'volume', 
+                    'close_time', 'quote_asset_volume', 'number_of_trades', 
+                    'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+                ])
+                
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                
+                all_data.append(df[['close']])
+                
+                start_time = int(df.index[-1].timestamp() * 1000) + 1
+            
+            except requests.exceptions.RequestException as e:
+                print(f'Error fetching historical price data for {symbol}: {e}')
+                break
+        
+        if all_data:
+            return pd.concat(all_data)
+        else:
+            return None
+        
     def rolling_window(self, symbol):
         '''
         Function to update the rolling window with the latest price.
@@ -150,7 +200,45 @@ class PairTrading:
 
         # Update last update timestamp
         self.last_rolling_update[symbol] = current_time
-                      
+
+    def rolling_window_backtest(self, symbol, timestamp):
+        '''
+        Update rolling window with the latest price during backtest.
+        Ensures updates occur sequentially and only if at least an hour has passed.
+        '''
+        if symbol not in self.rolling_data:
+            # Initialize rolling data with 1-hour intervals (resampled)
+            self.rolling_data[symbol] = (
+                self.historical_data[symbol]
+                .iloc[:30*24]  # Take the first 30 days * 24 hours of data
+                .resample('1h')  # Resample to 1-hour intervals
+                .ffill()  # Forward-fill missing values
+            ).copy()
+
+            # Ensure the first value is not NaN after resampling
+            if self.rolling_data[symbol].isnull().values.any():
+                self.rolling_data[symbol].bfill(inplace=True)  # Back-fill if necessary
+
+            self.last_rolling_update[symbol] = self.rolling_data[symbol].index[-1]  # Store last timestamp
+            return
+
+        # Ensure at least an hour has passed before updating
+        if (timestamp - self.last_rolling_update[symbol]).total_seconds() < 3600:
+            return  # Skip update if not enough time has passed
+
+        # Add new data point to rolling window
+        if timestamp in self.historical_data[symbol].index:
+            next_price = self.historical_data[symbol].loc[timestamp]['close']
+            new_row = pd.DataFrame({'close': [next_price]}, index=[timestamp])
+            self.rolling_data[symbol] = pd.concat([self.rolling_data[symbol], new_row])
+
+            # Maintain a max window size (30 days * 24 hours)
+            if len(self.rolling_data[symbol]) > 30 * 24:
+                self.rolling_data[symbol] = self.rolling_data[symbol].iloc[1:]
+
+            # Update last update timestamp
+            self.last_rolling_update[symbol] = timestamp
+
     def check_cointegration(self, symbol1, symbol2):
         '''
         Function to check the cointegration between two assets, symbol1 and symbol2 should be a single column of prices.
@@ -173,10 +261,11 @@ class PairTrading:
         pair = (symbol1, symbol2)
         if self.check_cointegration(symbol1, symbol2):
             if pair in self.active_pairs:
-                print(f"Pair {symbol1}-{symbol2} is already active. Updating timestamp.")
+                # print(f"Pair {symbol1}-{symbol2} is already active. Updating timestamp.")
+                return
             else:
                 print(f"Pair {symbol1}-{symbol2} added to active pairs.")
-            
+
             # Update or add the pair with the current timestamp
             self.active_pairs[pair] = datetime.datetime.now()
         # else:
@@ -238,11 +327,51 @@ class PairTrading:
                 'symbol': symbol2,
                 'amount': short_amount,
                 'entry_price': price2,
-                'entry_capital': short_capital
+                'entry_capital': short_capital,
+                'timestamp': datetime.datetime.now()
             }
         }
         
         print(f"Opened long position for {symbol1} with capital {long_capital} and short position for {symbol2} with capital {short_capital}.")
+    
+    def open_position_backtest(self, symbol1, symbol2, timestamp, long_symbol, short_symbol):
+        pair = (symbol1, symbol2)
+        if pair in self.positions:
+            print(f"Position already open for pair {pair}.")
+            return
+
+        num_active_pairs = len(self.active_pairs)
+        if num_active_pairs == 0:
+            print("No active pairs to allocate capital.")
+            return
+
+        capital_per_pair = self.capital / num_active_pairs
+        long_capital = capital_per_pair / 2
+        short_capital = capital_per_pair / 2
+
+        price_long = self.historical_data[long_symbol].loc[timestamp]['close']
+        price_short = self.historical_data[short_symbol].loc[timestamp]['close']
+
+        long_amount = long_capital / price_long
+        short_amount = short_capital / price_short
+
+        # Deduct capital and fee (only once)
+        self.capital -= capital_per_pair * (1 + self.fee)
+
+        self.positions[pair] = {
+            'long': {
+                'symbol': long_symbol,
+                'amount': long_amount,
+                'entry_price': price_long,
+                'entry_capital': long_capital
+            },
+            'short': {
+                'symbol': short_symbol,
+                'amount': short_amount,
+                'entry_price': price_short,
+                'entry_capital': short_capital
+            }
+        }
     
     def close_position(self, symbol1, symbol2):
         '''
@@ -286,6 +415,37 @@ class PairTrading:
         
         print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
 
+    def close_position_backtest(self, symbol1, symbol2, timestamp):
+        pair = (symbol1, symbol2)
+        if pair not in self.positions:
+            print(f"No open position for pair {symbol1}-{symbol2}.")
+            return
+
+        position = self.positions[pair]
+
+        price_long = self.historical_data[position['long']['symbol']].loc[timestamp]['close']
+        price_short = self.historical_data[position['short']['symbol']].loc[timestamp]['close']
+
+        long_total_received = price_long * position['long']['amount']
+        short_total_received = price_short * position['short']['amount']
+
+        long_profit_loss = long_total_received - position['long']['entry_capital']
+        short_profit_loss = position['short']['entry_capital'] - short_total_received
+
+        total_profit_loss = long_profit_loss + short_profit_loss
+
+        # Update capital (including fee)
+        self.capital += total_profit_loss - abs(total_profit_loss) * self.fee
+
+        # Add back the initial capital that was tied up in the positions
+        self.capital += position['long']['entry_capital'] + position['short']['entry_capital']
+
+        del self.positions[pair]
+        print(f"Closed positions for pair {symbol1}-{symbol2}. Total P&L: {total_profit_loss}.")
+
+
+
+
     def check_capital(self):
         total_position_value = 0
         
@@ -306,9 +466,9 @@ class PairTrading:
             total_position_value += long_value + short_value
         
         self.total_capital = self.capital + total_position_value
-        print(f'Total capital including positions: {self.total_capital}')
-        print(f'Available capital: {self.capital}')
-        print(f'Total value of open positions: {total_position_value}')
+        # print(f'Total capital including positions: {self.total_capital}')
+        # print(f'Available capital: {self.capital}')
+        # print(f'Total value of open positions: {total_position_value}')
 
     def calculate_beta(self, symbol1, symbol2):
         """
@@ -353,9 +513,113 @@ class PairTrading:
         returns1 = returns1.to_numpy()
         returns2 = returns2.to_numpy()
 
-        # Calculate spread directly (no beta needed for return-based approach)
-        spread = returns1 - returns2
+        Y = returns1
+        X = returns2
+
+        X = sm.add_constant(X)
+        model = sm.OLS(Y, X).fit()
+
+        beta = model.params[1]
+        spread = Y - beta * X[:, 1]  # X[:, 1] extracts the return values, ignoring the intercept
+
         return spread
+
+    def backtest(self):
+        print("Running backtest")
+        cryptocurrencies = ['AVAUSDT', 'BTCUSDT']
+        data_dir = 'historical_data'  # Directory where CSV files will be saved
+        
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+
+        # Load historical data for each symbol
+        end_time = int(time.time() * 1000)
+        for symbol in cryptocurrencies:
+            file_path = os.path.join(data_dir, f"{symbol}_historical_data.csv")
+            
+            if os.path.exists(file_path):
+                print(f"Loading historical data for {symbol} from file")
+                self.historical_data[symbol] = pd.read_csv(file_path, index_col=0, parse_dates=True)
+            else:
+                print(f"Fetching and saving historical data for {symbol}")
+                self.historical_data[symbol] = self.fetch_historical_prices_backtest(symbol, end_time)
+                self.historical_data[symbol].index = pd.to_datetime(self.historical_data[symbol].index)
+                self.historical_data[symbol].to_csv(file_path) 
+
+        if self.historical_data[symbol].isnull().values.any():
+            self.historical_data[symbol].ffill(inplace=True)
+
+        # Find common timestamps across all symbols
+        common_timestamps = set(self.historical_data[cryptocurrencies[0]].index)
+        for symbol in cryptocurrencies[1:]:
+            common_timestamps &= set(self.historical_data[symbol].index)
+
+        common_timestamps = sorted(common_timestamps)
+        print(f"Number of common timestamps: {len(common_timestamps)}")
+
+        # Proceed with the rest of the backtest
+        for timestamp in common_timestamps:
+            for symbol in cryptocurrencies:
+                self.rolling_window_backtest(symbol, timestamp)
+
+            for i in range(len(cryptocurrencies)):
+                for j in range(i + 1, len(cryptocurrencies)):
+                    symbol1 = cryptocurrencies[i]
+                    symbol2 = cryptocurrencies[j]
+                    self.check_active_pairs(symbol1, symbol2)
+            self.remove_expired_pairs()
+
+            for symbol1, symbol2 in self.active_pairs:
+                mean_spread = self.calculate_spread(symbol1, symbol2)
+                latest_price1 = self.historical_data[symbol1].loc[timestamp, "close"]
+                latest_price2 = self.historical_data[symbol2].loc[timestamp, "close"]
+
+                prev_timestamp = self.historical_data[symbol1].index[self.historical_data[symbol1].index.get_loc(timestamp) - 1]
+                prev_price1 = self.historical_data[symbol1].loc[prev_timestamp, "close"]
+                prev_price2 = self.historical_data[symbol2].loc[prev_timestamp, "close"]
+
+                latest_price1 = float(latest_price1)
+                prev_price1 = float(prev_price1)
+
+                return1 = (latest_price1 / prev_price1) - 1
+                return2 = (latest_price2 / prev_price2) - 1
+
+                spread = return1 - return2
+
+                mean = mean_spread.mean()
+                std = mean_spread.std()
+                upper_open = mean + 2 * std
+                lower_open = mean - 2 * std
+                upper_close = mean + 0.5 * std
+                lower_close = mean - 0.5 * std
+
+                pair = (symbol1, symbol2)
+
+                if spread > upper_open:
+                    if pair not in self.positions:
+                        print(f"Opening position for pair {pair}")
+                        self.open_position_backtest(symbol2, symbol1, timestamp, symbol2, symbol1) # long symbol, short symbol
+                        print(f"Opened SHORT on {symbol1} and LONG on {symbol2} (Spread: {spread:.6f})")
+
+                elif spread < lower_open:
+                    if pair not in self.positions:
+                        print(f"Opening position for pair {pair}")
+                        self.open_position_backtest(symbol1, symbol2, timestamp, symbol1, symbol2) # long symbol, short symbol
+                        print(f"Opened SHORT on {symbol2} and LONG on {symbol1} (Spread: {spread:.6f})")
+
+                # Check if the current spread indicates the position should be closed
+                if lower_close < spread < upper_close and pair in self.positions:
+                    # Retrieve the symbols from the open position
+                    long_symbol = self.positions[pair]['long']['symbol']
+                    short_symbol = self.positions[pair]['short']['symbol']
+                    
+                    # Close the position with the same order of symbols as when it was opened
+                    self.close_position_backtest(long_symbol, short_symbol, timestamp)
+                    print(f'Closed position on {long_symbol} (long) and {short_symbol} (short), Capital: {self.capital}')
+
+            row_data = {symbol: self.historical_data[symbol].loc[timestamp].to_dict() for symbol in cryptocurrencies}
+
+            
 
     def main(self):
         '''
@@ -367,7 +631,6 @@ class PairTrading:
         
         while True:
             # Update rolling windows
-            print(self.rolling_data)
             for symbol in cryptocurrencies:
                 self.rolling_window(symbol)
 
@@ -410,4 +673,5 @@ class PairTrading:
 
 if __name__ == '__main__':
     pair_trading = PairTrading(pairs=[])
-    pair_trading.main()
+    # pair_trading.main()
+    pair_trading.backtest()

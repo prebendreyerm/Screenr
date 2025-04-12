@@ -26,12 +26,16 @@ def index():
         if spread is not None:
             mean = np.mean(spread)
             std = np.std(spread)
-            upper_limit = mean + 2 * std
-            lower_limit = mean - 2 * std
+            upper_open_limit = mean + 2 * std
+            lower_open_limit = mean - 2 * std
+            upper_close_limit = mean + 0.5 * std
+            lower_close_limit = mean - 0.5 * std
             spread_limits[pair] = {
+                'upper_close_limit': upper_close_limit,
                 'spread': spread[-1],
-                'upper_limit': upper_limit,
-                'lower_limit': lower_limit
+                'lower_close_limit': lower_close_limit,
+                'upper_open_limit': upper_open_limit,
+                'lower_open_limit': lower_open_limit
             }
     
     capital = pair_trading.capital

@@ -87,6 +87,7 @@
                 <th>Short Entry Price</th>
                 <th>Short Entry Capital</th>
                 <th>Short Last Price</th>
+                <th>Timestamp</th>
             </tr>
             {% for pair, details in positions %}
             <tr>
@@ -101,6 +102,7 @@
                 <td>{{ details['short']['entry_price'] }}</td>
                 <td>{{ details['short']['entry_capital'] }}</td>
                 <td>{{ last_prices[details['short']['symbol']] }}</td>
+                <td>{{ details['short']['timestamp'] }}</td>
             </tr>
             {% endfor %}
         </table>
@@ -109,16 +111,20 @@
         <table>
             <tr>
                 <th>Pair</th>
+                <th>Upper Close Limit</th>
                 <th>Spread</th>
-                <th>Upper Limit</th>
-                <th>Lower Limit</th>
+                <th>Lower Close Limit</th>
+                <th>Upper Open Limit</th>
+                <th>Lower Open Limit</th>
             </tr>
             {% for pair, limits in spread_limits.items() %}
             <tr>
                 <td>{{ pair[0] }} : {{ pair[1] }}</td>
+                <td>{{ limits['upper_close_limit'] }}</td>
                 <td>{{ limits['spread'] }}</td>
-                <td>{{ limits['upper_limit'] }}</td>
-                <td>{{ limits['lower_limit'] }}</td>
+                <td>{{ limits['lower_close_limit'] }}</td>
+                <td>{{ limits['upper_open_limit'] }}</td>
+                <td>{{ limits['lower_open_limit'] }}</td>
             </tr>
             {% endfor %}
         </table>
